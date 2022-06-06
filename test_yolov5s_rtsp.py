@@ -234,7 +234,7 @@ def process_frame_queue_for_infer():
                 processing_frame = frame_queue[-1]
                 frame_queue = []
             else:
-                time.sleep(1/100)
+                time.sleep(1/10)
                 continue
         except:
             continue
@@ -422,7 +422,6 @@ if __name__ == '__main__':
             # cap = cv2.VideoCapture("rtsp://admin:KSglfmis1@36.153.41.21:2121")
             cap = cv2.VideoCapture(FLAGS.input_src_rtsp_uri)
             print("Is VideoCapture opened: {}".format(cap.isOpened()))
-            last_infered_time = None
             while(cap.isOpened()):
                 # total_time_start = time.time()
                 ret, frame = cap.read()
@@ -437,12 +436,15 @@ if __name__ == '__main__':
                     frame_queue.append(frame)
                 finally:
                     frame_queue_lock.release()
+            
+            time.sleep(3)
         except Exception as e:
-            print('exceptioned in process(conn to kafka server, open rtsp stream and infer): {} will keep retrying...'.format(traceback.format_exc()))
-            time.sleep(1)
+            print('exceptioned in process(conn to kafka server and open/read rtsp stream): {} will keep retrying...'.format(traceback.format_exc()))
+            time.sleep(3)
             continue
 
 
-    print('quit the whole app')    
+    print('quit the whole app')
     rknn_lite.release()
+
 
