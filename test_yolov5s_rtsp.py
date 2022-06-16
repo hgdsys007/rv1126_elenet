@@ -15,16 +15,15 @@ from kafka.errors import KafkaError
 from rknnlite.api import RKNNLite
 import threading
 
-RKNN_MODEL = './elenet_960_1280_yolov5s.rknn'
-DATASET = './dataset.txt'
+RKNN_MODEL = './elenet_5class.rknn'
 
-QUANTIZE_ON = True
+QUANTIZE_ON = True 
 
 BOX_THRESH = 0.5
 NMS_THRESH = 0.6
 IMG_SIZE = 1280
 
-CLASSES = ("electric_bicycle","person","door_sign","bicycle","gastank")
+CLASSES = ("eb","person","door_sign","bicycle","gastank")
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -180,8 +179,8 @@ def draw(image, boxes, scores, classes):
     """
     for box, score, cl in zip(boxes, scores, classes):
         top, left, right, bottom = box
-        print('class: {}, score: {}'.format(CLASSES[cl], score))
-        print('box coordinate left,top,right,down: [{}, {}, {}, {}]'.format(top, left, right, bottom))
+        # print('class: {}, score: {}'.format(CLASSES[cl], score))
+        # print('box coordinate left,top,right,down: [{}, {}, {}, {}]'.format(top, left, right, bottom))
         top = int(top)
         left = int(left)
         right = int(right)
@@ -191,8 +190,11 @@ def draw(image, boxes, scores, classes):
         cv2.putText(image, '{0} {1:.2f}'.format(CLASSES[cl], score),
                     (top, left - 6),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6, (0, 0, 255), 2)
-
+                    0.7, (0, 0, 255), 2)
+    cv2.putText(image, '{}'.format(datetime.datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3]),
+                (2, 24),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1, (0, 255, 0), 2)
 
 def letterbox(im, new_shape=(640, 640), color=(0, 0, 0)):
     # Resize and pad image while meeting stride-multiple constraints
@@ -219,10 +221,15 @@ def letterbox(im, new_shape=(640, 640), color=(0, 0, 0)):
     return im, ratio, (dw, dh)
 
 total_infer_times = 0
-def process_frame_queue_for_infer():
+def loop_process_frame_queue_for_infer():
     global frame_queue
     global frame_queue_lock
     global total_infer_times
+    global upload_interval
+    global last_uploading_datetime
+    global producer
+    global verbose
+    global enable_output_to_local
     while (True):
         # print("dequeue thread is running")
         total_time_start = time.time()
@@ -230,8 +237,11 @@ def process_frame_queue_for_infer():
         try:
             frame_queue_lock.acquire()
             if frame_queue:
-                # reduce the q
+                # fetch the last one
                 processing_frame = frame_queue[-1]
+                if verbose:
+                    print('Cycle start at: {}, Fetched a frame: {}...'.format(datetime.datetime.now(),processing_frame.shape))
+                # reduce the q
                 frame_queue = []
             else:
                 time.sleep(1/10)
@@ -241,100 +251,129 @@ def process_frame_queue_for_infer():
         finally:
             frame_queue_lock.release()
 
-        resized_frame, ratio, (dw, dh) = letterbox(processing_frame, new_shape=(1280, 1280))
-        # print('image shape: {}, ratio: {}'.format(resized_frame.shape, ratio))
-        # # Inference
-        print('  pre-processing used time: {}ms, frame_queue len: '.format((time.time() - total_time_start)*1000,len(frame_queue)))
-        infer_start_time = time.time()
-        outputs = rknn_lite.inference(inputs=[resized_frame])
-        total_infer_times = total_infer_times+1
-        print('  infer used time: {}ms'.format((time.time() - infer_start_time)*1000))
+        try:
+            resized_frame, ratio, (dw, dh) = letterbox(processing_frame, new_shape=(1280, 1280))
+            # print('image shape: {}, ratio: {}'.format(resized_frame.shape, ratio))
+            # # Inference
+            if verbose:
+                print('     pre-processing used time: {}ms, frame_queue len: '.format((time.time() - total_time_start)*1000,len(frame_queue)))
+            infer_start_time = time.time()
+            outputs = rknn_lite.inference(inputs=[resized_frame])
+            total_infer_times = total_infer_times+1
+            if verbose:
+                print('     infer used time: {}ms'.format((time.time() - infer_start_time)*1000))
 
-        post_process_time = time.time()
-        # post process
-        input0_data = outputs[0]
-        input1_data = outputs[1]
-        input2_data = outputs[2]
+            post_process_time = time.time()
+            # post process
+            input0_data = outputs[0]
+            input1_data = outputs[1]
+            input2_data = outputs[2]
 
-        input0_data = input0_data.reshape([3,-1]+list(input0_data.shape[-2:]))
-        input1_data = input1_data.reshape([3,-1]+list(input1_data.shape[-2:]))
-        input2_data = input2_data.reshape([3,-1]+list(input2_data.shape[-2:]))
+            input0_data = input0_data.reshape([3,-1]+list(input0_data.shape[-2:]))
+            input1_data = input1_data.reshape([3,-1]+list(input1_data.shape[-2:]))
+            input2_data = input2_data.reshape([3,-1]+list(input2_data.shape[-2:]))
 
-        input_data = list()
-        input_data.append(np.transpose(input0_data, (2, 3, 0, 1)))
-        input_data.append(np.transpose(input1_data, (2, 3, 0, 1)))
-        input_data.append(np.transpose(input2_data, (2, 3, 0, 1)))
+            input_data = list()
+            input_data.append(np.transpose(input0_data, (2, 3, 0, 1)))
+            input_data.append(np.transpose(input1_data, (2, 3, 0, 1)))
+            input_data.append(np.transpose(input2_data, (2, 3, 0, 1)))
 
-        boxes, classes, scores = yolov5_post_process(input_data)            
-        detected_obj_count = 0
-        detected_obj_names = ''
-        if classes is not None:
-            for cl in classes:
-                detected_obj_names += CLASSES[cl]+";"
-            detected_obj_count = len(classes)
-        print('  post_process used time: {}ms, detected object names: {}'.format((time.time() - post_process_time)*1000,detected_obj_names))
-        # enable_output_inferenced_image = False
-        # if (detected_obj_count>=1 and enable_output_inferenced_image):
-        #     for box, score, cl in zip(boxes, scores, classes):
-        #         top, left, right, bottom = box
-        #         print('class: {}, score: {}'.format(CLASSES[cl], score))
-        #         # print('box coordinate left,top,right,down: [{}, {}, {}, {}]'.format(top, left, right, bottom))
-        #         # top = int(top)
-        #         # left = int(left)
-        #         # right = int(right)
-        #         # bottom = int(bottom)
-        #         # img_1 = cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR)
-        #         img_1 = resized_frame
-        #         if boxes is not None:
-        #             draw(img_1, boxes, scores, classes)
-        #             cv2.imwrite('./capture/{}.jpg'.format(datetime.datetime.now()), img_1)
-        
-        enable_output_eb_image = False
-        if (detected_obj_count>=1):
-            obj_info_list = []
-            for box, score, cl in zip(boxes, scores, classes):
-                top, left, right, bottom = box
-                # sample    top: 585.4451804161072, left: 589.0, right: 1114.6779885292053, bottom: 915.0
-                top = int(top)
-                left = int(left)
-                right = int(right)
-                bottom = int(bottom)
-                # CLASSES = ("electric_bicycle","person","door_sign","bicycle","gastank")
-                if (cl==0):
-                    cropped = resized_frame[top:top + int(bottom-top), left:left + int(right-left)]
-                    frame_copy = cropped#cv2.cvtColor(cropped, cv2.COLOR_RGBA2BGRA)
-                    print("see eb, resized_frame shape: {}, top: {}, left: {}, right: {}, bottom: {}".format(frame_copy.shape,top,left,right,bottom))
-                    if frame_copy.shape[0]<=100 or frame_copy.shape[1]<=100:
-                        print("!!!Too small eb image size, will skip...")
-                        continue
-                    if enable_output_eb_image:
-                        img_1 = frame_copy
-                        cv2.imwrite('./capture/eb_{}.jpg'.format(datetime.datetime.now()), img_1)
-                    
-                    retval, buffer = cv2.imencode('.jpg', frame_copy)
-                    base64_bytes = base64.b64encode(buffer)
-                    obj_base64_encoded_text = base64_bytes.decode('ascii')
-                    eb_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|TwoWheeler|B|M|b|X|base64_image_data:{}|{}'.format(18446744073709551615,top,left,right,bottom, 
-                        obj_base64_encoded_text, score)
-                    print("see eb, upload size: {} bytes".format(len(eb_obj_info)))
-                    obj_info_list.append(eb_obj_info)
-                if (cl==1):
-                    people_obj_info = '{}|{}|{}|{}|{}|Person|#|m|18|b|n|f|{}'.format(18446744073709551615,top,left,right,bottom, score)
-                    obj_info_list.append(people_obj_info)
-                if (cl==2):
-                    ds_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|DoorWarningSign|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
-                    obj_info_list.append(ds_obj_info)
-                if (cl==3):
-                    gt_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|gastank|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
-                    obj_info_list.append(gt_obj_info)
-            if len(obj_info_list)>=1:
-                producer.send(sensor_id_str, {
-                    'version':'4.1',
-                    'id':1913,
-                    '@timestamp':'{}'.format(datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()),
-                    'sensorId':'{}'.format(sensor_id_str),'objects':obj_info_list})
-        print('Cycle used time: {}ms, total lasting time: {}s, total infered times: {}'.format((time.time() - total_time_start)*1000, time.time()-init_start_time, total_infer_times))
+            boxes, classes, scores = yolov5_post_process(input_data)            
+            detected_obj_count = 0
+            detected_obj_names = ''
+            if classes is not None:
+                for cl in classes:
+                    detected_obj_names += CLASSES[cl]+";"
+                detected_obj_count = len(classes)
+            if verbose:
+                print('     post_process used time: {}ms, detected object: {}'.format((time.time() - post_process_time)*1000,detected_obj_names))
+            # enable_output_inferenced_image = False
+            # if (detected_obj_count>=1 and enable_output_inferenced_image):
+            #     for box, score, cl in zip(boxes, scores, classes):
+            #         top, left, right, bottom = box
+            #         print('class: {}, score: {}'.format(CLASSES[cl], score))
+            #         # print('box coordinate left,top,right,down: [{}, {}, {}, {}]'.format(top, left, right, bottom))
+            #         # top = int(top)
+            #         # left = int(left)
+            #         # right = int(right)
+            #         # bottom = int(bottom)
+            #         # img_1 = cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR)
+            #         img_1 = resized_frame
+            #         if boxes is not None:
+            #             draw(img_1, boxes, scores, classes)
+            #             cv2.imwrite('./capture/{}.jpg'.format(datetime.datetime.now()), img_1)
+            
+            enable_output_eb_image = False
+            if (detected_obj_count>=1):
+                if (datetime.datetime.now() - last_uploading_datetime).total_seconds() * 1000 <= upload_interval:
+                    continue
+                obj_info_list = []
+                for box, score, cl in zip(boxes, scores, classes):
+                    top, left, right, bottom = box
+                    # sample    top: 585.4451804161072, left: 589.0, right: 1114.6779885292053, bottom: 915.0
+                    top = int(top)
+                    left = int(left)
+                    right = int(right)
+                    bottom = int(bottom)  
 
+                    # CLASSES = ("electric_bicycle","person","door_sign","bicycle","gastank")
+                    if (cl==0):
+                        cropped = resized_frame[top:top + int(bottom-top), left:left + int(right-left)]
+                        frame_copy = cropped#cv2.cvtColor(cropped, cv2.COLOR_RGBA2BGRA)
+                        if verbose:
+                            print("     see eb, resized_frame shape: {}, top: {}, left: {}, right: {}, bottom: {}".format(frame_copy.shape,top,left,right,bottom))
+                        if frame_copy.shape[0]<=100 or frame_copy.shape[1]<=100:
+                            print("     !!!Too small eb image size, will skip...")
+                            continue
+                        if enable_output_eb_image:
+                            img_1 = frame_copy
+                            cv2.imwrite('./capture/eb_{}.jpg'.format(datetime.datetime.now()), img_1)
+                        
+                        retval, buffer = cv2.imencode('.jpg', frame_copy)
+                        base64_bytes = base64.b64encode(buffer)
+                        obj_base64_encoded_text = base64_bytes.decode('ascii')
+                        eb_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|TwoWheeler|B|M|b|X|base64_image_data:{}|{}'.format(18446744073709551615,top,left,right,bottom, 
+                            obj_base64_encoded_text, score)
+                        if verbose:
+                            print("     see eb, upload size: {} bytes".format(len(eb_obj_info)))
+                        obj_info_list.append(eb_obj_info)
+                    if (cl==1):
+                        people_obj_info = '{}|{}|{}|{}|{}|Person|#|m|18|b|n|f|{}'.format(18446744073709551615,top,left,right,bottom, score)
+                        obj_info_list.append(people_obj_info)
+                    if (cl==2):
+                        ds_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|DoorWarningSign|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
+                        obj_info_list.append(ds_obj_info)
+                    if (cl==4):
+                        gt_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|gastank|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
+                        obj_info_list.append(gt_obj_info)
+
+                if enable_output_infer_result_to_local:
+                    # img_1 = cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR)
+                    output_to_local_img = resized_frame
+                    draw(output_to_local_img, boxes, scores, classes)
+                    cv2.imwrite('output/{}.jpg'.format(datetime.datetime.now().strftime("%Y_%m_%d__%H_%M_%S")), output_to_local_img)
+
+                if len(obj_info_list)>=1 and producer is not None:
+                    if verbose:
+                        print('     will upload: {} obj info'.format(len(obj_info_list)))
+                    producer.send(sensor_id_str, {
+                        'version':'4.1',
+                        'id':1913,
+                        '@timestamp':'{}'.format(datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat()),
+                        'sensorId':'{}'.format(sensor_id_str),'objects':obj_info_list})
+                    last_uploading_datetime = datetime.datetime.now()
+            
+            if verbose:
+                print('Cycle end, used time: {}ms, total lasting time: {}s, total infered times: {}'.format((time.time() - total_time_start)*1000, time.time()-init_start_time, total_infer_times))
+        except:
+            print('     exceptioned in infer and upload: {} will ignore and go on...'.format(traceback.format_exc()))
+            time.sleep(1)
+            continue
+verbose = False
+enable_output_infer_result_to_local = False
+last_uploading_datetime = datetime.datetime.now()
+upload_interval = None
+producer = None
 frame_queue_lock = threading.Lock()
 frame_queue = []
 if __name__ == '__main__':
@@ -342,17 +381,27 @@ if __name__ == '__main__':
     from json import dumps
     import configparser
     import base64
-    parser = argparse.ArgumentParser()    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--enable-verbose", dest="verbose",
+                      help="enable verbose logging to console",
+                      type=lambda x: (str(x).lower() in ['true','1', 'yes']),
+                      metavar="trueOrfalse",
+                      required=False,
+                      default=False)
+    parser.add_argument("--enable-output", dest="enable_output_infer_result_to_local",
+                      help="enable output the infer result images with rect to a local file",
+                      type=lambda x: (str(x).lower() in ['true','1', 'yes']),
+                      metavar="trueOrfalse",
+                      required=False,
+                      default=False)
     parser.add_argument("-i", "--input-src-rtsp-uri", dest="input_src_rtsp_uri",
                       help="a rstp stream for start the inferencing",
                       default="rtsp://msg.glfiot.com:8554/mystream",
-                      metavar="FILE")
-    parser.add_argument('-m',
-                        '--model-name',
-                        type=str,
-                        required=False,
-                        default="bicycletypenet_tao",
-                        help='Name of model')
+                      metavar="RtspUrl")
+    parser.add_argument("--upload-interval", dest="upload_interval",
+                      help="the interval for each uploading the detected object json data to kafka server, by ms",
+                      default=1500,
+                      type=int)
     parser.add_argument('-b',
                         '--batch-size',
                         type=int,
@@ -372,7 +421,13 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('/opt/nvidia/deepstream/deepstream-6.0/samples/configs/deepstream-app/config_elenet.txt')
     sensor_id_str = config['custom-uploader']['whoami']
-
+    upload_interval = FLAGS.upload_interval
+    verbose = FLAGS.verbose
+    enable_output_infer_result_to_local = FLAGS.enable_output_infer_result_to_local
+    if enable_output_infer_result_to_local:
+        if not os.path.exists('output'):
+            os.makedirs('output')
+    print("Is verbose enabled: {}".format(verbose))
     # Create RKNN object
     rknn_lite = RKNNLite()
 
@@ -409,7 +464,7 @@ if __name__ == '__main__':
     print('done')
     print('  init_runtime used time: {}s'.format((time.time() - init_start_time)))
 
-    dequeue_and_process_infer_thread = threading.Thread(target=process_frame_queue_for_infer, args=())
+    dequeue_and_process_infer_thread = threading.Thread(target=loop_process_frame_queue_for_infer, args=())
     dequeue_and_process_infer_thread.start()
     print("dequeue thread is started")
     while(True):
@@ -425,6 +480,9 @@ if __name__ == '__main__':
             while(cap.isOpened()):
                 # total_time_start = time.time()
                 ret, frame = cap.read()
+                if not ret:
+                    print("!read a broken frame by cap.read(), will re-open the video...")
+                    break
                 # if last_infered_time is not None:
                 #     if (time.time()- last_infered_time)<=1:
                 #         # print("skip 1 frame...")
