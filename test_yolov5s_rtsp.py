@@ -323,7 +323,8 @@ def loop_process_frame_queue_for_infer():
                         if verbose:
                             print("     see eb, resized_frame shape: {}, top: {}, left: {}, right: {}, bottom: {}".format(frame_copy.shape,top,left,right,bottom))
                         if frame_copy.shape[0]<=100 or frame_copy.shape[1]<=100:
-                            print("     !!!Too small eb image size, will skip...")
+                            if verbose:
+                                print("     !!!Too small eb image size, will skip...")
                             continue
                         if enable_output_eb_image:
                             img_1 = frame_copy
