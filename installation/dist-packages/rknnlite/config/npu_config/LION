@@ -1,0 +1,13 @@
+[device]
+    target = VIPNANOQ_PID0X82
+    pid = 0X82
+    optimization = True
+    core = 10
+    mad_per_core = 64
+    input_buffer_depth = 12
+    float16_support = True
+    dynamic_fixed_point-8_support = True
+    dynamic_fixed_point-16_support = True
+    asymmetric_quantized-u8_support = True
+    extAXISRAMSizes = 2031616
+    sdk_dir = LION

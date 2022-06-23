@@ -1,0 +1,18 @@
+Metadata-Version: 2.1
+Name: rknn-toolkit-lite
+Version: 1.7.0.dev-0cfb22
+Summary: Rockchip Neural Network Toolkit Lite
+Home-page: UNKNOWN
+Author: Rockchip
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Indenpendent
+Description-Content-Type: text/markdown
+Requires-Dist: numpy (==1.16.3)
+Requires-Dist: psutil (==5.6.2)
+Requires-Dist: ruamel.yaml (==0.15.81)
+
+# RKNN Toolkit Lite
+
+

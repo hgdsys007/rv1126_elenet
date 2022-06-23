@@ -1,5 +1,5 @@
 import sys
-sys.path.append('/home/firefly/.local/lib/python3.7/site-packages')
+#sys.path.append('/home/firefly/.local/lib/python3.7/site-packages')
 import platform
 import os
 import urllib

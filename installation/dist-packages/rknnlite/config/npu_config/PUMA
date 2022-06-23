@@ -1,0 +1,14 @@
+[device]
+    target = VIP8000NANOSI_PID0XB5
+    pid = 0XB5
+    optimization = True
+    core = 4
+    mad_per_core = 64
+    input_buffer_depth = 9
+    float16_support = False
+    dynamic_fixed_point-8_support = True
+    dynamic_fixed_point-16_support = True
+    asymmetric_quantized-u8_support = True
+    evis = 2
+    extAXISRAMSizes = 2031616
+    sdk_dir = LION
