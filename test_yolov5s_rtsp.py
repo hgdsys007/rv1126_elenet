@@ -14,6 +14,8 @@ from bson import json_util
 from kafka.errors import KafkaError
 from rknnlite.api import RKNNLite
 import threading
+import socket
+import json
 
 RKNN_MODEL = './elenet_5class.rknn'
 
@@ -230,6 +232,7 @@ def loop_process_frame_queue_for_infer():
     global producer
     global verbose
     global enable_output_to_local
+    global udp_broadcast_sock
     while (True):
         # print("dequeue thread is running")
         total_time_start = time.time()
@@ -263,6 +266,11 @@ def loop_process_frame_queue_for_infer():
             if verbose:
                 print('     infer used time: {}ms'.format((time.time() - infer_start_time)*1000))
 
+            # don't need send that fast, so add a simple control
+            if total_infer_times % 5 ==0:
+                udp_heartbeat_msg = {"sender":local_ip,"msg_type":"heartbeat","total_infer_times":total_infer_times,"timestamp":str(datetime.datetime.now())}
+                # udp_msg = str.encode("{\"sender\":\"{}\",\"msg_type\":\"heartbeat\",\"timestamp\":\"{}\"}".format(local_ip,datetime.datetime.now()))
+                udp_broadcast_sock.sendto(str.encode(json.dumps(udp_heartbeat_msg)), ("255.255.255.255", 5005))
             post_process_time = time.time()
             # post process
             input0_data = outputs[0]
@@ -370,6 +378,16 @@ def loop_process_frame_queue_for_infer():
             print('     exceptioned in infer and upload: {} will ignore and go on...'.format(traceback.format_exc()))
             time.sleep(1)
             continue
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    local_ip = s.getsockname()[0]
+    s.close()
+    return local_ip
+
+udp_broadcast_sock = None
+local_ip = None
 verbose = False
 enable_output_infer_result_to_local = False
 last_uploading_datetime = datetime.datetime.now()
@@ -429,6 +447,13 @@ if __name__ == '__main__':
         if not os.path.exists('output'):
             os.makedirs('output')
     print("Is verbose enabled: {}".format(verbose))
+
+    local_ip = get_local_ip()
+    print("get_local_ip: {}".format(local_ip))
+    udp_broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
+    udp_broadcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    udp_broadcast_sock.bind((local_ip,0))
+
     # Create RKNN object
     rknn_lite = RKNNLite()
 
