@@ -333,7 +333,7 @@ def loop_process_frame_queue_for_infer():
                         if enable_output_eb_image:
                             img_1 = frame_copy
                             cv2.imwrite('./capture/eb_{}.jpg'.format(datetime.datetime.now()), img_1)
-                        if frame_copy.shape[0]<=80 or frame_copy.shape[1]<=80:
+                        if frame_copy.shape[0]<=60 or frame_copy.shape[1]<=60:
                             if verbose:
                                 print("     !!!Too small eb image size, ignore...")
                             continue
