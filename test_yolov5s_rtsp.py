@@ -243,7 +243,7 @@ def loop_process_frame_queue_for_infer():
                 # fetch the last one
                 processing_frame = frame_queue[-1]
                 if verbose:
-                    print('Cycle start at: {}, Fetched a frame: {}...'.format(datetime.datetime.now(),processing_frame.shape))
+                    print('Cycle start at: {}, Fetched a frame(h, w, c): {}...'.format(datetime.datetime.now(),processing_frame.shape))
                 # reduce the q
                 frame_queue = []
             else:
@@ -329,8 +329,8 @@ def loop_process_frame_queue_for_infer():
                         cropped = resized_frame[top:top + int(bottom-top), left:left + int(right-left)]
                         frame_copy = cropped#cv2.cvtColor(cropped, cv2.COLOR_RGBA2BGRA)
                         if verbose:
-                            print("     see eb, resized_frame shape: {}, top: {}, left: {}, right: {}, bottom: {}".format(frame_copy.shape,top,left,right,bottom))
-                        if frame_copy.shape[0]<=100 or frame_copy.shape[1]<=100:
+                            print("     see eb, resized_frame shape(h, w, c): {}, top: {}, left: {}, right: {}, bottom: {}".format(frame_copy.shape,top,left,right,bottom))
+                        if frame_copy.shape[0]<=85 or frame_copy.shape[1]<=85:
                             if verbose:
                                 print("     !!!Too small eb image size, will skip...")
                             continue
@@ -415,7 +415,7 @@ if __name__ == '__main__':
                       default=False)
     parser.add_argument("-i", "--input-src-rtsp-uri", dest="input_src_rtsp_uri",
                       help="a rstp stream for start the inferencing",
-                      default="rtsp://msg.glfiot.com:8554/mystream",
+                      default="rtsp://admin:KSglfmis1@192.168.177.3:554/h264/ch1/main/av_stream",
                       metavar="RtspUrl")
     parser.add_argument("--upload-interval", dest="upload_interval",
                       help="the interval for each uploading the detected object json data to kafka server, by ms",
