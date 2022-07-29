@@ -330,13 +330,13 @@ def loop_process_frame_queue_for_infer():
                         frame_copy = cropped#cv2.cvtColor(cropped, cv2.COLOR_RGBA2BGRA)
                         if verbose:
                             print("     see eb, resized_frame shape(h, w, c): {}, top: {}, left: {}, right: {}, bottom: {}".format(frame_copy.shape,top,left,right,bottom))
-                        if frame_copy.shape[0]<=85 or frame_copy.shape[1]<=85:
-                            if verbose:
-                                print("     !!!Too small eb image size, will skip...")
-                            continue
                         if enable_output_eb_image:
                             img_1 = frame_copy
                             cv2.imwrite('./capture/eb_{}.jpg'.format(datetime.datetime.now()), img_1)
+                        if frame_copy.shape[0]<=80 or frame_copy.shape[1]<=80:
+                            if verbose:
+                                print("     !!!Too small eb image size, ignore...")
+                            continue
                         
                         retval, buffer = cv2.imencode('.jpg', frame_copy)
                         base64_bytes = base64.b64encode(buffer)
