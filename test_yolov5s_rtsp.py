@@ -266,11 +266,6 @@ def loop_process_frame_queue_for_infer():
             if verbose:
                 print('     infer used time: {}ms'.format((time.time() - infer_start_time)*1000))
 
-            # don't need send that fast, so add a simple control
-            if total_infer_times % 5 ==0:
-                udp_heartbeat_msg = {"sender":local_ip,"msg_type":"heartbeat","total_infer_times":total_infer_times,"timestamp":str(datetime.datetime.now())}
-                # udp_msg = str.encode("{\"sender\":\"{}\",\"msg_type\":\"heartbeat\",\"timestamp\":\"{}\"}".format(local_ip,datetime.datetime.now()))
-                udp_broadcast_sock.sendto(str.encode(json.dumps(udp_heartbeat_msg)), ("255.255.255.255", 5005))
             post_process_time = time.time()
             # post process
             input0_data = outputs[0]
@@ -295,6 +290,13 @@ def loop_process_frame_queue_for_infer():
                 detected_obj_count = len(classes)
             if verbose:
                 print('     post_process used time: {}ms, detected object: {}'.format((time.time() - post_process_time)*1000,detected_obj_names))
+
+            # udp heartbeat here, don't need send that fast, so add a simple control
+            if total_infer_times % 5 ==0:
+                udp_heartbeat_msg = {"sender":local_ip,"msg_type":"heartbeat","total_infer_times":total_infer_times,"objects":detected_obj_names,"timestamp":str(datetime.datetime.now())}
+                # udp_msg = str.encode("{\"sender\":\"{}\",\"msg_type\":\"heartbeat\",\"timestamp\":\"{}\"}".format(local_ip,datetime.datetime.now()))
+                udp_broadcast_sock.sendto(str.encode(json.dumps(udp_heartbeat_msg)), ("255.255.255.255", 5005))
+
             # enable_output_inferenced_image = False
             # if (detected_obj_count>=1 and enable_output_inferenced_image):
             #     for box, score, cl in zip(boxes, scores, classes):
