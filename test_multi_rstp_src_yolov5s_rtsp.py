@@ -421,11 +421,11 @@ if __name__ == '__main__':
                       default=False)
     parser.add_argument("-i", "--input-src-rtsp-uri", dest="input_src_rtsp_uri",
                       help="a rstp stream for start the inferencing",
-                      default="rtsp://msg.glfiot.com:8554/mystream",
+                      default="rtsp://192.168.0.131:8554/mystream",
                       metavar="RtspUrl")
     parser.add_argument("-i2", "--input-src-rtsp-uri2", dest="input_src_rtsp_uri2",
                       help="second rstp stream for start the inferencing",
-                      default="rtsp://msg.glfiot.com:8554/mystream",
+                      default="rtsp://192.168.0.131:8554/mystream",
                       metavar="RtspUrl")
     parser.add_argument("--upload-interval", dest="upload_interval",
                       help="the interval for each uploading the detected object json data to kafka server, by ms",
