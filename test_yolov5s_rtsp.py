@@ -340,11 +340,18 @@ def loop_process_frame_queue_for_infer():
                                 print("     !!!Too small eb image size, ignore...")
                             continue
                         
-                        retval, buffer = cv2.imencode('.jpg', frame_copy)
-                        base64_bytes = base64.b64encode(buffer)
-                        obj_base64_encoded_text = base64_bytes.decode('ascii')
-                        eb_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|TwoWheeler|B|M|b|X|base64_image_data:{}|{}'.format(18446744073709551615,top,left,right,bottom, 
-                            obj_base64_encoded_text, score)
+                        retval, cropped_buffer = cv2.imencode('.jpg', frame_copy)
+                        cropped_base64_bytes = base64.b64encode(cropped_buffer)
+                        cropped_obj_base64_encoded_text = cropped_base64_bytes.decode('ascii')
+                        if enable_full_eb_image_output_to_cloud:
+                            full_image_retval, full_image_buffer = cv2.imencode('.jpg', resized_frame)
+                            full_image_base64_bytes = base64.b64encode(full_image_buffer)
+                            full_image_base64_encoded_text = full_image_base64_bytes.decode('ascii')
+                            eb_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|TwoWheeler|B|M|b|X|full_base64_image_data:{}|base64_image_data:{}|{}'.format(18446744073709551615,top,left,right,bottom, 
+                                full_image_base64_encoded_text, cropped_obj_base64_encoded_text, score)
+                        else:
+                            eb_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|TwoWheeler|B|M|b|X|base64_image_data:{}|{}'.format(18446744073709551615,top,left,right,bottom, 
+                                cropped_obj_base64_encoded_text, score)
                         if verbose:
                             print("     see eb, upload size: {} bytes".format(len(eb_obj_info)))
                         obj_info_list.append(eb_obj_info)
@@ -392,6 +399,7 @@ udp_broadcast_sock = None
 local_ip = None
 verbose = False
 enable_output_infer_result_to_local = False
+enable_full_eb_image_output_to_cloud = False
 last_uploading_datetime = datetime.datetime.now()
 upload_interval = None
 producer = None
@@ -411,6 +419,12 @@ if __name__ == '__main__':
                       default=False)
     parser.add_argument("--enable-output", dest="enable_output_infer_result_to_local",
                       help="enable output the infer result images with rect to a local file",
+                      type=lambda x: (str(x).lower() in ['true','1', 'yes']),
+                      metavar="trueOrfalse",
+                      required=False,
+                      default=False)
+    parser.add_argument("--enable-full-eb-image-output-to-cloud", dest="enable_full_eb_image_output_to_cloud",
+                      help="enable output the eb full image to remote cloud",
                       type=lambda x: (str(x).lower() in ['true','1', 'yes']),
                       metavar="trueOrfalse",
                       required=False,
@@ -445,6 +459,7 @@ if __name__ == '__main__':
     upload_interval = FLAGS.upload_interval
     verbose = FLAGS.verbose
     enable_output_infer_result_to_local = FLAGS.enable_output_infer_result_to_local
+    enable_full_eb_image_output_to_cloud = FLAGS.enable_full_eb_image_output_to_cloud
     if enable_output_infer_result_to_local:
         if not os.path.exists('output'):
             os.makedirs('output')
