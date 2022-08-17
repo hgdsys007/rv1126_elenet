@@ -292,7 +292,7 @@ def loop_process_frame_queue_for_infer():
                 print('     post_process used time: {}ms, detected object: {}'.format((time.time() - post_process_time)*1000,detected_obj_names))
 
             # udp heartbeat here, don't need send that fast, so add a simple control
-            if total_infer_times % 5 ==0:
+            if total_infer_times % 2 ==0:
                 udp_heartbeat_msg = {"sender":local_ip,"msg_type":"heartbeat","total_infer_times":total_infer_times,"objects":detected_obj_names,"timestamp":str(datetime.datetime.now())}
                 # udp_msg = str.encode("{\"sender\":\"{}\",\"msg_type\":\"heartbeat\",\"timestamp\":\"{}\"}".format(local_ip,datetime.datetime.now()))
                 udp_broadcast_sock.sendto(str.encode(json.dumps(udp_heartbeat_msg)), ("255.255.255.255", 5005))
@@ -362,8 +362,11 @@ def loop_process_frame_queue_for_infer():
                         ds_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|DoorWarningSign|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
                         obj_info_list.append(ds_obj_info)
                     if (cl==4):
-                        gt_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|gastank|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
-                        obj_info_list.append(gt_obj_info)
+                        # for lower the wrong detection(see too much case that treat safety helmet as gas tank):
+                        # the gas tank most likely sits on floor, so its bottom must be a high value, here say it sits at 3/4 height of the frame 
+                        if (bottom>=(720/4 * 3)):
+                            gt_obj_info = '{}|{}|{}|{}|{}|Vehicle|#|gastank|B|M|y|l|CN|{}'.format(18446744073709551615,top,left,right,bottom, score)
+                            obj_info_list.append(gt_obj_info)
 
                 if enable_output_infer_result_to_local:
                     # img_1 = cv2.cvtColor(resized_frame, cv2.COLOR_RGB2BGR)
